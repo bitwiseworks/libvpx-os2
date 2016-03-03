@@ -1,4 +1,4 @@
-#!/usr/bin/env perl
+#! /@unixroot/usr/bin/env perl
 
 no strict 'refs';
 use warnings;
