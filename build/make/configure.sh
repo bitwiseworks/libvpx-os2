@@ -1211,6 +1211,7 @@ EOF
           add_ldflags ${sim_arch}
           ;;
         os2)
+          add_asflags -f aout
           enabled debug && add_asflags -g
           EXE_SFX=.exe
           ;;
