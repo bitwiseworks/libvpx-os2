@@ -56,8 +56,6 @@ int I400Copy(const uint8* src_y, int src_stride_y,
              uint8* dst_y, int dst_stride_y,
              int width, int height);
 
-// TODO(fbarchard): I420ToM420
-
 LIBYUV_API
 int I420ToNV12(const uint8* src_y, int src_stride_y,
                const uint8* src_u, int src_stride_u,
@@ -136,6 +134,17 @@ int I420ToRGB565(const uint8* src_y, int src_stride_y,
                  const uint8* src_v, int src_stride_v,
                  uint8* dst_frame, int dst_stride_frame,
                  int width, int height);
+
+// Convert I420 To RGB565 with 4x4 dither matrix (16 bytes).
+// Values in dither matrix from 0 to 7 recommended.
+// The order of the dither matrix is first byte is upper left.
+
+LIBYUV_API
+int I420ToRGB565Dither(const uint8* src_y, int src_stride_y,
+                       const uint8* src_u, int src_stride_u,
+                       const uint8* src_v, int src_stride_v,
+                       uint8* dst_frame, int dst_stride_frame,
+                       const uint8* dither4x4, int width, int height);
 
 LIBYUV_API
 int I420ToARGB1555(const uint8* src_y, int src_stride_y,
