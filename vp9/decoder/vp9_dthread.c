@@ -17,7 +17,7 @@
 // #define DEBUG_THREAD
 
 // TODO(hkuang): Clean up all the #ifdef in this file.
-void vp9_frameworker_lock_stats(VP9Worker *const worker) {
+void vp9_frameworker_lock_stats(VPxWorker *const worker) {
 #if CONFIG_MULTITHREAD
   FrameWorkerData *const worker_data = worker->data1;
   pthread_mutex_lock(&worker_data->stats_mutex);
@@ -26,7 +26,7 @@ void vp9_frameworker_lock_stats(VP9Worker *const worker) {
 #endif
 }
 
-void vp9_frameworker_unlock_stats(VP9Worker *const worker) {
+void vp9_frameworker_unlock_stats(VPxWorker *const worker) {
 #if CONFIG_MULTITHREAD
   FrameWorkerData *const worker_data = worker->data1;
   pthread_mutex_unlock(&worker_data->stats_mutex);
@@ -35,7 +35,7 @@ void vp9_frameworker_unlock_stats(VP9Worker *const worker) {
 #endif
 }
 
-void vp9_frameworker_signal_stats(VP9Worker *const worker) {
+void vp9_frameworker_signal_stats(VPxWorker *const worker) {
 #if CONFIG_MULTITHREAD
   FrameWorkerData *const worker_data = worker->data1;
 
@@ -59,11 +59,10 @@ void vp9_frameworker_signal_stats(VP9Worker *const worker) {
 #endif
 
 // TODO(hkuang): Remove worker parameter as it is only used in debug code.
-void vp9_frameworker_wait(VP9Worker *const worker, RefCntBuffer *const ref_buf,
+void vp9_frameworker_wait(VPxWorker *const worker, RefCntBuffer *const ref_buf,
                           int row) {
 #if CONFIG_MULTITHREAD
-  if (!ref_buf)
-    return;
+  if (!ref_buf) return;
 
 #ifndef BUILDING_WITH_TSAN
   // The following line of code will get harmless tsan error but it is the key
@@ -74,7 +73,7 @@ void vp9_frameworker_wait(VP9Worker *const worker, RefCntBuffer *const ref_buf,
   {
     // Find the worker thread that owns the reference frame. If the reference
     // frame has been fully decoded, it may not have owner.
-    VP9Worker *const ref_worker = ref_buf->frame_worker_owner;
+    VPxWorker *const ref_worker = ref_buf->frame_worker_owner;
     FrameWorkerData *const ref_worker_data =
         (FrameWorkerData *)ref_worker->data1;
     const VP9Decoder *const pbi = ref_worker_data->pbi;
@@ -114,7 +113,7 @@ void vp9_frameworker_wait(VP9Worker *const worker, RefCntBuffer *const ref_buf,
 
 void vp9_frameworker_broadcast(RefCntBuffer *const buf, int row) {
 #if CONFIG_MULTITHREAD
-  VP9Worker *worker = buf->frame_worker_owner;
+  VPxWorker *worker = buf->frame_worker_owner;
 
 #ifdef DEBUG_THREAD
   {
@@ -134,8 +133,8 @@ void vp9_frameworker_broadcast(RefCntBuffer *const buf, int row) {
 #endif  // CONFIG_MULTITHREAD
 }
 
-void vp9_frameworker_copy_context(VP9Worker *const dst_worker,
-                                  VP9Worker *const src_worker) {
+void vp9_frameworker_copy_context(VPxWorker *const dst_worker,
+                                  VPxWorker *const src_worker) {
 #if CONFIG_MULTITHREAD
   FrameWorkerData *const src_worker_data = (FrameWorkerData *)src_worker->data1;
   FrameWorkerData *const dst_worker_data = (FrameWorkerData *)dst_worker->data1;
@@ -147,25 +146,31 @@ void vp9_frameworker_copy_context(VP9Worker *const dst_worker,
   vp9_frameworker_lock_stats(src_worker);
   while (!src_worker_data->frame_context_ready) {
     pthread_cond_wait(&src_worker_data->stats_cond,
-        &src_worker_data->stats_mutex);
+                      &src_worker_data->stats_mutex);
   }
 
-  dst_cm->last_frame_seg_map = src_cm->seg.enabled ?
-      src_cm->current_frame_seg_map : src_cm->last_frame_seg_map;
+  dst_cm->last_frame_seg_map = src_cm->seg.enabled
+                                   ? src_cm->current_frame_seg_map
+                                   : src_cm->last_frame_seg_map;
   dst_worker_data->pbi->need_resync = src_worker_data->pbi->need_resync;
   vp9_frameworker_unlock_stats(src_worker);
 
-  dst_cm->prev_frame = src_cm->show_existing_frame ?
-                       src_cm->prev_frame : src_cm->cur_frame;
-  dst_cm->last_width = !src_cm->show_existing_frame ?
-                       src_cm->width : src_cm->last_width;
-  dst_cm->last_height = !src_cm->show_existing_frame ?
-                        src_cm->height : src_cm->last_height;
+  dst_cm->bit_depth = src_cm->bit_depth;
+#if CONFIG_VP9_HIGHBITDEPTH
+  dst_cm->use_highbitdepth = src_cm->use_highbitdepth;
+#endif
+  dst_cm->prev_frame =
+      src_cm->show_existing_frame ? src_cm->prev_frame : src_cm->cur_frame;
+  dst_cm->last_width =
+      !src_cm->show_existing_frame ? src_cm->width : src_cm->last_width;
+  dst_cm->last_height =
+      !src_cm->show_existing_frame ? src_cm->height : src_cm->last_height;
   dst_cm->subsampling_x = src_cm->subsampling_x;
   dst_cm->subsampling_y = src_cm->subsampling_y;
   dst_cm->frame_type = src_cm->frame_type;
-  dst_cm->last_show_frame = !src_cm->show_existing_frame ?
-                            src_cm->show_frame : src_cm->last_show_frame;
+  dst_cm->last_show_frame = !src_cm->show_existing_frame
+                                ? src_cm->show_frame
+                                : src_cm->last_show_frame;
   for (i = 0; i < REF_FRAMES; ++i)
     dst_cm->ref_frame_map[i] = src_cm->next_ref_frame_map[i];
 
@@ -179,7 +184,7 @@ void vp9_frameworker_copy_context(VP9Worker *const dst_worker,
   memcpy(dst_cm->frame_contexts, src_cm->frame_contexts,
          FRAME_CONTEXTS * sizeof(dst_cm->frame_contexts[0]));
 #else
-  (void) dst_worker;
-  (void) src_worker;
+  (void)dst_worker;
+  (void)src_worker;
 #endif  // CONFIG_MULTITHREAD
 }

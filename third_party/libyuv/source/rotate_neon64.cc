@@ -9,6 +9,7 @@
  */
 
 #include "libyuv/row.h"
+#include "libyuv/rotate_row.h"
 
 #include "libyuv/basic_types.h"
 
@@ -21,12 +22,11 @@ extern "C" {
 #if !defined(LIBYUV_DISABLE_NEON) && defined(__aarch64__)
 
 static uvec8 kVTbl4x4Transpose =
-  { 0,  4,  8, 12,  1,  5,  9, 13,  2,  6, 10, 14,  3,  7, 11, 15 };
+  { 0, 4, 8, 12, 1, 5, 9, 13, 2, 6, 10, 14, 3, 7, 11, 15 };
 
 void TransposeWx8_NEON(const uint8* src, int src_stride,
-                       uint8* dst, int dst_stride,
-                       int width) {
-  const uint8* src_temp = NULL;
+                       uint8* dst, int dst_stride, int width) {
+  const uint8* src_temp;
   int64 width64 = (int64) width;  // Work around clang 3.4 warning.
   asm volatile (
     // loops are on blocks of 8. loop will stop when
@@ -235,7 +235,7 @@ void TransposeWx8_NEON(const uint8* src, int src_stride,
 
     "4:                                          \n"
 
-    : "+r"(src_temp),                             // %0
+    : "=&r"(src_temp),                            // %0
       "+r"(src),                                  // %1
       "+r"(dst),                                  // %2
       "+r"(width64)                               // %3
@@ -255,7 +255,7 @@ void TransposeUVWx8_NEON(const uint8* src, int src_stride,
                          uint8* dst_a, int dst_stride_a,
                          uint8* dst_b, int dst_stride_b,
                          int width) {
-  const uint8* src_temp = NULL;
+  const uint8* src_temp;
   int64 width64 = (int64) width;  // Work around clang 3.4 warning.
   asm volatile (
     // loops are on blocks of 8. loop will stop when
@@ -520,7 +520,7 @@ void TransposeUVWx8_NEON(const uint8* src, int src_stride,
 
     "4:                                        \n"
 
-    : "+r"(src_temp),                             // %0
+    : "=&r"(src_temp),                            // %0
       "+r"(src),                                  // %1
       "+r"(dst_a),                                // %2
       "+r"(dst_b),                                // %3
