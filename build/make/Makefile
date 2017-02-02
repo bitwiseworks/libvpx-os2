@@ -30,10 +30,17 @@ test_%: .DEFAULT ;
 
 # Note: md5sum is not installed on OS X, but openssl is. Openssl may not be
 # installed on cygwin, so we need to autodetect here.
+ifneq ($(findstring os2,$(TOOLCHAIN)),)
+md5sum := $(firstword $(wildcard \
+          $(foreach e,md5sum.exe openssl.exe,\
+          $(foreach p,$(subst ;, ,$(subst \,/,$(PATH))),$(p)/$(e)*))\
+          ))
+else
 md5sum := $(firstword $(wildcard \
           $(foreach e,md5sum openssl,\
           $(foreach p,$(subst :, ,$(PATH)),$(p)/$(e)*))\
           ))
+endif
 md5sum := $(if $(filter %openssl,$(md5sum)),$(md5sum) dgst -md5,$(md5sum))
 
 TGT_CC:=$(word 3, $(subst -, ,$(TOOLCHAIN)))
