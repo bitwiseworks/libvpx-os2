@@ -290,7 +290,7 @@ libvpx.def: $(call enabled,CODEC_EXPORTS)
 	$(qexec)echo LIBRARY $(LIBVPX_SO:.dll=) INITINSTANCE TERMINSTANCE > $@
 	$(qexec)echo "DATA MULTIPLE NONSHARED" >> $@
 	$(qexec)echo "EXPORTS" >> $@
-	$(qexec)awk '!/vpx_svc_*/ {print "_"$$2}' $^ >>$@
+	$(qexec)awk '{print "_"$$2}' $^ >>$@
 CLEAN-OBJS += libvpx.def
 
 libvpx_dll.a: $(LIBVPX_SO)
