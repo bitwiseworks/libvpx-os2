@@ -254,6 +254,9 @@ SHARED_LIB_SUF          := _dll.a
 EXPORT_FILE             := libvpx.def
 LIBVPX_SO_SYMLINKS      :=
 LIBVPX_SO_IMPLIB        := libvpx_dll.a
+VENDOR ?=community
+BUILD_INFO=\#\#1\#\# $(shell date +'%d %b %Y %H:%M:%S')     $(shell uname -n)
+BUILDLEVEL_INFO=@\#$(VENDOR):$(VERSION_MAJOR).$(VERSION_MINOR).$(VERSION_PATCH)\#@$(BUILD_INFO)::::0::
 else
 LIBVPX_SO               := libvpx.so.$(SO_VERSION_MAJOR).$(SO_VERSION_MINOR).$(SO_VERSION_PATCH)
 SHARED_LIB_SUF          := .so
@@ -276,6 +279,7 @@ $(BUILD_PFX)$(LIBVPX_SO): EXPORTS_FILE = $(EXPORT_FILE)
 libvpx.def: $(call enabled,CODEC_EXPORTS)
 	@echo "    [CREATE] $@"
 	$(qexec)echo LIBRARY $(LIBVPX_SO:.dll=) INITINSTANCE TERMINSTANCE > $@
+	$(qexec)echo "DESCRIPTION \"$(BUILDLEVEL_INFO)@@libvpx\"" >> $@
 	$(qexec)echo "DATA MULTIPLE NONSHARED" >> $@
 	$(qexec)echo "EXPORTS" >> $@
 	$(qexec)awk '{print "_"$$2}' $^ >>$@
