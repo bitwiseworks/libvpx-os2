@@ -50,12 +50,6 @@
 #endif
 #include "./y4minput.h"
 
-/* Swallow warnings about unused results of fread/fwrite */
-static size_t wrap_fread(void *ptr, size_t size, size_t nmemb, FILE *stream) {
-  return fread(ptr, size, nmemb, stream);
-}
-#define fread wrap_fread
-
 static size_t wrap_fwrite(const void *ptr, size_t size, size_t nmemb,
                           FILE *stream) {
   return fwrite(ptr, size, nmemb, stream);
@@ -95,34 +89,8 @@ static void warn_or_exit_on_error(vpx_codec_ctx_t *ctx, int fatal,
   va_end(ap);
 }
 
-static int read_frame(struct VpxInputContext *input_ctx, vpx_image_t *img) {
-  FILE *f = input_ctx->file;
-  y4m_input *y4m = &input_ctx->y4m;
-  int shortread = 0;
-
-  if (input_ctx->file_type == FILE_TYPE_Y4M) {
-    if (y4m_input_fetch_frame(y4m, f, img) < 1) return 0;
-  } else {
-    shortread = read_yuv_frame(input_ctx, img);
-  }
-
-  return !shortread;
-}
-
-static int file_is_y4m(const char detect[4]) {
-  if (memcmp(detect, "YUV4", 4) == 0) {
-    return 1;
-  }
-  return 0;
-}
-
-static int fourcc_is_ivf(const char detect[4]) {
-  if (memcmp(detect, "DKIF", 4) == 0) {
-    return 1;
-  }
-  return 0;
-}
-
+static const arg_def_t help =
+    ARG_DEF(NULL, "help", 0, "Show usage options and exit");
 static const arg_def_t debugmode =
     ARG_DEF("D", "debug", 0, "Debug mode (makes output deterministic)");
 static const arg_def_t outputfile =
@@ -199,7 +167,8 @@ static const arg_def_t test16bitinternalarg = ARG_DEF(
     NULL, "test-16bit-internal", 0, "Force use of 16 bit internal buffer");
 #endif
 
-static const arg_def_t *main_args[] = { &debugmode,
+static const arg_def_t *main_args[] = { &help,
+                                        &debugmode,
                                         &outputfile,
                                         &codecarg,
                                         &passes,
@@ -321,8 +290,11 @@ static const arg_def_t minsection_pct =
     ARG_DEF(NULL, "minsection-pct", 1, "GOP min bitrate (% of target)");
 static const arg_def_t maxsection_pct =
     ARG_DEF(NULL, "maxsection-pct", 1, "GOP max bitrate (% of target)");
+static const arg_def_t corpus_complexity =
+    ARG_DEF(NULL, "corpus-complexity", 1, "corpus vbr complexity midpoint");
 static const arg_def_t *rc_twopass_args[] = { &bias_pct, &minsection_pct,
-                                              &maxsection_pct, NULL };
+                                              &maxsection_pct,
+                                              &corpus_complexity, NULL };
 
 static const arg_def_t kf_min_dist =
     ARG_DEF(NULL, "kf-min-dist", 1, "Minimum keyframe interval (frames)");
@@ -336,19 +308,19 @@ static const arg_def_t *kf_args[] = { &kf_min_dist, &kf_max_dist, &kf_disabled,
 static const arg_def_t noise_sens =
     ARG_DEF(NULL, "noise-sensitivity", 1, "Noise sensitivity (frames to blur)");
 static const arg_def_t sharpness =
-    ARG_DEF(NULL, "sharpness", 1, "Loop filter sharpness (0..7)");
+    ARG_DEF(NULL, "sharpness", 1,
+            "Increase sharpness at the expense of lower PSNR. (0..7)");
 static const arg_def_t static_thresh =
     ARG_DEF(NULL, "static-thresh", 1, "Motion detection threshold");
-static const arg_def_t auto_altref =
-    ARG_DEF(NULL, "auto-alt-ref", 1, "Enable automatic alt reference frames");
 static const arg_def_t arnr_maxframes =
     ARG_DEF(NULL, "arnr-maxframes", 1, "AltRef max frames (0..15)");
 static const arg_def_t arnr_strength =
     ARG_DEF(NULL, "arnr-strength", 1, "AltRef filter strength (0..6)");
-static const arg_def_t arnr_type = ARG_DEF(NULL, "arnr-type", 1, "AltRef type");
-static const struct arg_enum_list tuning_enum[] = {
-  { "psnr", VP8_TUNE_PSNR }, { "ssim", VP8_TUNE_SSIM }, { NULL, 0 }
-};
+static const arg_def_t arnr_type =
+    ARG_DEF(NULL, "arnr-type", 1, "AltRef filter type (1..3)");
+static const struct arg_enum_list tuning_enum[] = { { "psnr", VP8_TUNE_PSNR },
+                                                    { "ssim", VP8_TUNE_SSIM },
+                                                    { NULL, 0 } };
 static const arg_def_t tune_ssim =
     ARG_DEF_ENUM(NULL, "tune", 1, "Material to favor", tuning_enum);
 static const arg_def_t cq_level =
@@ -361,12 +333,14 @@ static const arg_def_t gf_cbr_boost_pct = ARG_DEF(
 #if CONFIG_VP8_ENCODER
 static const arg_def_t cpu_used_vp8 =
     ARG_DEF(NULL, "cpu-used", 1, "CPU Used (-16..16)");
+static const arg_def_t auto_altref_vp8 = ARG_DEF(
+    NULL, "auto-alt-ref", 1, "Enable automatic alt reference frames. (0..1)");
 static const arg_def_t token_parts =
     ARG_DEF(NULL, "token-parts", 1, "Number of token partitions to use, log2");
 static const arg_def_t screen_content_mode =
     ARG_DEF(NULL, "screen-content-mode", 1, "Screen content mode");
 static const arg_def_t *vp8_args[] = { &cpu_used_vp8,
-                                       &auto_altref,
+                                       &auto_altref_vp8,
                                        &noise_sens,
                                        &sharpness,
                                        &static_thresh,
@@ -399,12 +373,19 @@ static const int vp8_arg_ctrl_map[] = { VP8E_SET_CPUUSED,
 
 #if CONFIG_VP9_ENCODER
 static const arg_def_t cpu_used_vp9 =
-    ARG_DEF(NULL, "cpu-used", 1, "CPU Used (-8..8)");
+    ARG_DEF(NULL, "cpu-used", 1, "CPU Used (-9..9)");
+static const arg_def_t auto_altref_vp9 = ARG_DEF(
+    NULL, "auto-alt-ref", 1,
+    "Enable automatic alt reference frames, 2+ enables multi-layer. (0..6)");
 static const arg_def_t tile_cols =
     ARG_DEF(NULL, "tile-columns", 1, "Number of tile columns to use, log2");
 static const arg_def_t tile_rows =
     ARG_DEF(NULL, "tile-rows", 1,
             "Number of tile rows to use, log2 (set to 0 while threads > 1)");
+
+static const arg_def_t enable_tpl_model =
+    ARG_DEF(NULL, "enable-tpl", 1, "Enable temporal dependency model");
+
 static const arg_def_t lossless =
     ARG_DEF(NULL, "lossless", 1, "Lossless mode (0: false (default), 1: true)");
 static const arg_def_t frame_parallel_decoding = ARG_DEF(
@@ -441,8 +422,8 @@ static const struct arg_enum_list color_space_enum[] = {
 };
 
 static const arg_def_t input_color_space =
-    ARG_DEF_ENUM(NULL, "color-space", 1, "The color space of input content:",
-                 color_space_enum);
+    ARG_DEF_ENUM(NULL, "color-space", 1,
+                 "The color space of input content:", color_space_enum);
 
 #if CONFIG_VP9_HIGHBITDEPTH
 static const struct arg_enum_list bitdepth_enum[] = {
@@ -460,6 +441,7 @@ static const arg_def_t inbitdeptharg =
 static const struct arg_enum_list tune_content_enum[] = {
   { "default", VP9E_CONTENT_DEFAULT },
   { "screen", VP9E_CONTENT_SCREEN },
+  { "film", VP9E_CONTENT_FILM },
   { NULL, 0 }
 };
 
@@ -468,17 +450,28 @@ static const arg_def_t tune_content = ARG_DEF_ENUM(
 
 static const arg_def_t target_level = ARG_DEF(
     NULL, "target-level", 1,
-    "Target level (255: off (default); 0: only keep level stats; 10: level 1.0;"
-    " 11: level 1.1; ... 62: level 6.2)");
+    "Target level\n"
+    "                                        255: off (default)\n"
+    "                                          0: only keep level stats\n"
+    "                                          1: adaptively set alt-ref "
+    "distance and column tile limit based on picture size, and keep"
+    " level stats\n"
+    "                                         10: level 1.0  11: level 1.1  "
+    "...  62: level 6.2");
+
+static const arg_def_t row_mt =
+    ARG_DEF(NULL, "row-mt", 1,
+            "Enable row based non-deterministic multi-threading in VP9");
 #endif
 
 #if CONFIG_VP9_ENCODER
 static const arg_def_t *vp9_args[] = { &cpu_used_vp9,
-                                       &auto_altref,
+                                       &auto_altref_vp9,
                                        &sharpness,
                                        &static_thresh,
                                        &tile_cols,
                                        &tile_rows,
+                                       &enable_tpl_model,
                                        &arnr_maxframes,
                                        &arnr_strength,
                                        &arnr_type,
@@ -498,6 +491,7 @@ static const arg_def_t *vp9_args[] = { &cpu_used_vp9,
                                        &min_gf_interval,
                                        &max_gf_interval,
                                        &target_level,
+                                       &row_mt,
 #if CONFIG_VP9_HIGHBITDEPTH
                                        &bitdeptharg,
                                        &inbitdeptharg,
@@ -509,6 +503,7 @@ static const int vp9_arg_ctrl_map[] = { VP8E_SET_CPUUSED,
                                         VP8E_SET_STATIC_THRESHOLD,
                                         VP9E_SET_TILE_COLUMNS,
                                         VP9E_SET_TILE_ROWS,
+                                        VP9E_SET_TPL,
                                         VP8E_SET_ARNR_MAXFRAMES,
                                         VP8E_SET_ARNR_STRENGTH,
                                         VP8E_SET_ARNR_TYPE,
@@ -528,276 +523,61 @@ static const int vp9_arg_ctrl_map[] = { VP8E_SET_CPUUSED,
                                         VP9E_SET_MIN_GF_INTERVAL,
                                         VP9E_SET_MAX_GF_INTERVAL,
                                         VP9E_SET_TARGET_LEVEL,
+                                        VP9E_SET_ROW_MT,
                                         0 };
 #endif
 
 static const arg_def_t *no_args[] = { NULL };
 
-void usage_exit(void) {
+static void show_help(FILE *fout, int shorthelp) {
   int i;
   const int num_encoder = get_vpx_encoder_count();
 
-  fprintf(stderr, "Usage: %s <options> -o dst_filename src_filename \n",
+  fprintf(fout, "Usage: %s <options> -o dst_filename src_filename \n",
           exec_name);
 
-  fprintf(stderr, "\nOptions:\n");
-  arg_show_usage(stderr, main_args);
-  fprintf(stderr, "\nEncoder Global Options:\n");
-  arg_show_usage(stderr, global_args);
-  fprintf(stderr, "\nRate Control Options:\n");
-  arg_show_usage(stderr, rc_args);
-  fprintf(stderr, "\nTwopass Rate Control Options:\n");
-  arg_show_usage(stderr, rc_twopass_args);
-  fprintf(stderr, "\nKeyframe Placement Options:\n");
-  arg_show_usage(stderr, kf_args);
+  if (shorthelp) {
+    fprintf(fout, "Use --help to see the full list of options.\n");
+    return;
+  }
+
+  fprintf(fout, "\nOptions:\n");
+  arg_show_usage(fout, main_args);
+  fprintf(fout, "\nEncoder Global Options:\n");
+  arg_show_usage(fout, global_args);
+  fprintf(fout, "\nRate Control Options:\n");
+  arg_show_usage(fout, rc_args);
+  fprintf(fout, "\nTwopass Rate Control Options:\n");
+  arg_show_usage(fout, rc_twopass_args);
+  fprintf(fout, "\nKeyframe Placement Options:\n");
+  arg_show_usage(fout, kf_args);
 #if CONFIG_VP8_ENCODER
-  fprintf(stderr, "\nVP8 Specific Options:\n");
-  arg_show_usage(stderr, vp8_args);
+  fprintf(fout, "\nVP8 Specific Options:\n");
+  arg_show_usage(fout, vp8_args);
 #endif
 #if CONFIG_VP9_ENCODER
-  fprintf(stderr, "\nVP9 Specific Options:\n");
-  arg_show_usage(stderr, vp9_args);
+  fprintf(fout, "\nVP9 Specific Options:\n");
+  arg_show_usage(fout, vp9_args);
 #endif
-  fprintf(stderr,
+  fprintf(fout,
           "\nStream timebase (--timebase):\n"
           "  The desired precision of timestamps in the output, expressed\n"
           "  in fractional seconds. Default is 1/1000.\n");
-  fprintf(stderr, "\nIncluded encoders:\n\n");
+  fprintf(fout, "\nIncluded encoders:\n\n");
 
   for (i = 0; i < num_encoder; ++i) {
     const VpxInterface *const encoder = get_vpx_encoder_by_index(i);
     const char *defstr = (i == (num_encoder - 1)) ? "(default)" : "";
-    fprintf(stderr, "    %-6s - %s %s\n", encoder->name,
+    fprintf(fout, "    %-6s - %s %s\n", encoder->name,
             vpx_codec_iface_name(encoder->codec_interface()), defstr);
   }
-  fprintf(stderr, "\n        ");
-  fprintf(stderr, "Use --codec to switch to a non-default encoder.\n\n");
+  fprintf(fout, "\n        ");
+  fprintf(fout, "Use --codec to switch to a non-default encoder.\n\n");
+}
 
+void usage_exit(void) {
+  show_help(stderr, 1);
   exit(EXIT_FAILURE);
-}
-
-#define mmin(a, b) ((a) < (b) ? (a) : (b))
-
-#if CONFIG_VP9_HIGHBITDEPTH
-static void find_mismatch_high(const vpx_image_t *const img1,
-                               const vpx_image_t *const img2, int yloc[4],
-                               int uloc[4], int vloc[4]) {
-  uint16_t *plane1, *plane2;
-  uint32_t stride1, stride2;
-  const uint32_t bsize = 64;
-  const uint32_t bsizey = bsize >> img1->y_chroma_shift;
-  const uint32_t bsizex = bsize >> img1->x_chroma_shift;
-  const uint32_t c_w =
-      (img1->d_w + img1->x_chroma_shift) >> img1->x_chroma_shift;
-  const uint32_t c_h =
-      (img1->d_h + img1->y_chroma_shift) >> img1->y_chroma_shift;
-  int match = 1;
-  uint32_t i, j;
-  yloc[0] = yloc[1] = yloc[2] = yloc[3] = -1;
-  plane1 = (uint16_t *)img1->planes[VPX_PLANE_Y];
-  plane2 = (uint16_t *)img2->planes[VPX_PLANE_Y];
-  stride1 = img1->stride[VPX_PLANE_Y] / 2;
-  stride2 = img2->stride[VPX_PLANE_Y] / 2;
-  for (i = 0, match = 1; match && i < img1->d_h; i += bsize) {
-    for (j = 0; match && j < img1->d_w; j += bsize) {
-      int k, l;
-      const int si = mmin(i + bsize, img1->d_h) - i;
-      const int sj = mmin(j + bsize, img1->d_w) - j;
-      for (k = 0; match && k < si; ++k) {
-        for (l = 0; match && l < sj; ++l) {
-          if (*(plane1 + (i + k) * stride1 + j + l) !=
-              *(plane2 + (i + k) * stride2 + j + l)) {
-            yloc[0] = i + k;
-            yloc[1] = j + l;
-            yloc[2] = *(plane1 + (i + k) * stride1 + j + l);
-            yloc[3] = *(plane2 + (i + k) * stride2 + j + l);
-            match = 0;
-            break;
-          }
-        }
-      }
-    }
-  }
-
-  uloc[0] = uloc[1] = uloc[2] = uloc[3] = -1;
-  plane1 = (uint16_t *)img1->planes[VPX_PLANE_U];
-  plane2 = (uint16_t *)img2->planes[VPX_PLANE_U];
-  stride1 = img1->stride[VPX_PLANE_U] / 2;
-  stride2 = img2->stride[VPX_PLANE_U] / 2;
-  for (i = 0, match = 1; match && i < c_h; i += bsizey) {
-    for (j = 0; match && j < c_w; j += bsizex) {
-      int k, l;
-      const int si = mmin(i + bsizey, c_h - i);
-      const int sj = mmin(j + bsizex, c_w - j);
-      for (k = 0; match && k < si; ++k) {
-        for (l = 0; match && l < sj; ++l) {
-          if (*(plane1 + (i + k) * stride1 + j + l) !=
-              *(plane2 + (i + k) * stride2 + j + l)) {
-            uloc[0] = i + k;
-            uloc[1] = j + l;
-            uloc[2] = *(plane1 + (i + k) * stride1 + j + l);
-            uloc[3] = *(plane2 + (i + k) * stride2 + j + l);
-            match = 0;
-            break;
-          }
-        }
-      }
-    }
-  }
-
-  vloc[0] = vloc[1] = vloc[2] = vloc[3] = -1;
-  plane1 = (uint16_t *)img1->planes[VPX_PLANE_V];
-  plane2 = (uint16_t *)img2->planes[VPX_PLANE_V];
-  stride1 = img1->stride[VPX_PLANE_V] / 2;
-  stride2 = img2->stride[VPX_PLANE_V] / 2;
-  for (i = 0, match = 1; match && i < c_h; i += bsizey) {
-    for (j = 0; match && j < c_w; j += bsizex) {
-      int k, l;
-      const int si = mmin(i + bsizey, c_h - i);
-      const int sj = mmin(j + bsizex, c_w - j);
-      for (k = 0; match && k < si; ++k) {
-        for (l = 0; match && l < sj; ++l) {
-          if (*(plane1 + (i + k) * stride1 + j + l) !=
-              *(plane2 + (i + k) * stride2 + j + l)) {
-            vloc[0] = i + k;
-            vloc[1] = j + l;
-            vloc[2] = *(plane1 + (i + k) * stride1 + j + l);
-            vloc[3] = *(plane2 + (i + k) * stride2 + j + l);
-            match = 0;
-            break;
-          }
-        }
-      }
-    }
-  }
-}
-#endif
-
-static void find_mismatch(const vpx_image_t *const img1,
-                          const vpx_image_t *const img2, int yloc[4],
-                          int uloc[4], int vloc[4]) {
-  const uint32_t bsize = 64;
-  const uint32_t bsizey = bsize >> img1->y_chroma_shift;
-  const uint32_t bsizex = bsize >> img1->x_chroma_shift;
-  const uint32_t c_w =
-      (img1->d_w + img1->x_chroma_shift) >> img1->x_chroma_shift;
-  const uint32_t c_h =
-      (img1->d_h + img1->y_chroma_shift) >> img1->y_chroma_shift;
-  int match = 1;
-  uint32_t i, j;
-  yloc[0] = yloc[1] = yloc[2] = yloc[3] = -1;
-  for (i = 0, match = 1; match && i < img1->d_h; i += bsize) {
-    for (j = 0; match && j < img1->d_w; j += bsize) {
-      int k, l;
-      const int si = mmin(i + bsize, img1->d_h) - i;
-      const int sj = mmin(j + bsize, img1->d_w) - j;
-      for (k = 0; match && k < si; ++k) {
-        for (l = 0; match && l < sj; ++l) {
-          if (*(img1->planes[VPX_PLANE_Y] +
-                (i + k) * img1->stride[VPX_PLANE_Y] + j + l) !=
-              *(img2->planes[VPX_PLANE_Y] +
-                (i + k) * img2->stride[VPX_PLANE_Y] + j + l)) {
-            yloc[0] = i + k;
-            yloc[1] = j + l;
-            yloc[2] = *(img1->planes[VPX_PLANE_Y] +
-                        (i + k) * img1->stride[VPX_PLANE_Y] + j + l);
-            yloc[3] = *(img2->planes[VPX_PLANE_Y] +
-                        (i + k) * img2->stride[VPX_PLANE_Y] + j + l);
-            match = 0;
-            break;
-          }
-        }
-      }
-    }
-  }
-
-  uloc[0] = uloc[1] = uloc[2] = uloc[3] = -1;
-  for (i = 0, match = 1; match && i < c_h; i += bsizey) {
-    for (j = 0; match && j < c_w; j += bsizex) {
-      int k, l;
-      const int si = mmin(i + bsizey, c_h - i);
-      const int sj = mmin(j + bsizex, c_w - j);
-      for (k = 0; match && k < si; ++k) {
-        for (l = 0; match && l < sj; ++l) {
-          if (*(img1->planes[VPX_PLANE_U] +
-                (i + k) * img1->stride[VPX_PLANE_U] + j + l) !=
-              *(img2->planes[VPX_PLANE_U] +
-                (i + k) * img2->stride[VPX_PLANE_U] + j + l)) {
-            uloc[0] = i + k;
-            uloc[1] = j + l;
-            uloc[2] = *(img1->planes[VPX_PLANE_U] +
-                        (i + k) * img1->stride[VPX_PLANE_U] + j + l);
-            uloc[3] = *(img2->planes[VPX_PLANE_U] +
-                        (i + k) * img2->stride[VPX_PLANE_U] + j + l);
-            match = 0;
-            break;
-          }
-        }
-      }
-    }
-  }
-  vloc[0] = vloc[1] = vloc[2] = vloc[3] = -1;
-  for (i = 0, match = 1; match && i < c_h; i += bsizey) {
-    for (j = 0; match && j < c_w; j += bsizex) {
-      int k, l;
-      const int si = mmin(i + bsizey, c_h - i);
-      const int sj = mmin(j + bsizex, c_w - j);
-      for (k = 0; match && k < si; ++k) {
-        for (l = 0; match && l < sj; ++l) {
-          if (*(img1->planes[VPX_PLANE_V] +
-                (i + k) * img1->stride[VPX_PLANE_V] + j + l) !=
-              *(img2->planes[VPX_PLANE_V] +
-                (i + k) * img2->stride[VPX_PLANE_V] + j + l)) {
-            vloc[0] = i + k;
-            vloc[1] = j + l;
-            vloc[2] = *(img1->planes[VPX_PLANE_V] +
-                        (i + k) * img1->stride[VPX_PLANE_V] + j + l);
-            vloc[3] = *(img2->planes[VPX_PLANE_V] +
-                        (i + k) * img2->stride[VPX_PLANE_V] + j + l);
-            match = 0;
-            break;
-          }
-        }
-      }
-    }
-  }
-}
-
-static int compare_img(const vpx_image_t *const img1,
-                       const vpx_image_t *const img2) {
-  uint32_t l_w = img1->d_w;
-  uint32_t c_w = (img1->d_w + img1->x_chroma_shift) >> img1->x_chroma_shift;
-  const uint32_t c_h =
-      (img1->d_h + img1->y_chroma_shift) >> img1->y_chroma_shift;
-  uint32_t i;
-  int match = 1;
-
-  match &= (img1->fmt == img2->fmt);
-  match &= (img1->d_w == img2->d_w);
-  match &= (img1->d_h == img2->d_h);
-#if CONFIG_VP9_HIGHBITDEPTH
-  if (img1->fmt & VPX_IMG_FMT_HIGHBITDEPTH) {
-    l_w *= 2;
-    c_w *= 2;
-  }
-#endif
-
-  for (i = 0; i < img1->d_h; ++i)
-    match &= (memcmp(img1->planes[VPX_PLANE_Y] + i * img1->stride[VPX_PLANE_Y],
-                     img2->planes[VPX_PLANE_Y] + i * img2->stride[VPX_PLANE_Y],
-                     l_w) == 0);
-
-  for (i = 0; i < c_h; ++i)
-    match &= (memcmp(img1->planes[VPX_PLANE_U] + i * img1->stride[VPX_PLANE_U],
-                     img2->planes[VPX_PLANE_U] + i * img2->stride[VPX_PLANE_U],
-                     c_w) == 0);
-
-  for (i = 0; i < c_h; ++i)
-    match &= (memcmp(img1->planes[VPX_PLANE_V] + i * img1->stride[VPX_PLANE_V],
-                     img2->planes[VPX_PLANE_V] + i * img2->stride[VPX_PLANE_V],
-                     c_w) == 0);
-
-  return match;
 }
 
 #define NELEMENTS(x) (sizeof(x) / sizeof(x[0]))
@@ -887,7 +667,10 @@ static void parse_global_config(struct VpxEncoderConfig *global, char **argv) {
   for (argi = argj = argv; (*argj = *argi); argi += arg.argv_step) {
     arg.argv_step = 1;
 
-    if (arg_match(&arg, &codecarg, argi)) {
+    if (arg_match(&arg, &help, argi)) {
+      show_help(stdout, 0);
+      exit(EXIT_SUCCESS);
+    } else if (arg_match(&arg, &codecarg, argi)) {
       global->codec = get_vpx_encoder_by_name(arg.val);
       if (!global->codec)
         die("Error: Unrecognized argument (%s) to --codec\n", arg.val);
@@ -980,57 +763,6 @@ static void parse_global_config(struct VpxEncoderConfig *global, char **argv) {
     warn("Enforcing one-pass encoding in realtime mode\n");
     global->passes = 1;
   }
-}
-
-static void open_input_file(struct VpxInputContext *input) {
-  /* Parse certain options from the input file, if possible */
-  input->file = strcmp(input->filename, "-") ? fopen(input->filename, "rb")
-                                             : set_binary_mode(stdin);
-
-  if (!input->file) fatal("Failed to open input file");
-
-  if (!fseeko(input->file, 0, SEEK_END)) {
-    /* Input file is seekable. Figure out how long it is, so we can get
-     * progress info.
-     */
-    input->length = ftello(input->file);
-    rewind(input->file);
-  }
-
-  /* Default to 1:1 pixel aspect ratio. */
-  input->pixel_aspect_ratio.numerator = 1;
-  input->pixel_aspect_ratio.denominator = 1;
-
-  /* For RAW input sources, these bytes will applied on the first frame
-   *  in read_frame().
-   */
-  input->detect.buf_read = fread(input->detect.buf, 1, 4, input->file);
-  input->detect.position = 0;
-
-  if (input->detect.buf_read == 4 && file_is_y4m(input->detect.buf)) {
-    if (y4m_input_open(&input->y4m, input->file, input->detect.buf, 4,
-                       input->only_i420) >= 0) {
-      input->file_type = FILE_TYPE_Y4M;
-      input->width = input->y4m.pic_w;
-      input->height = input->y4m.pic_h;
-      input->pixel_aspect_ratio.numerator = input->y4m.par_n;
-      input->pixel_aspect_ratio.denominator = input->y4m.par_d;
-      input->framerate.numerator = input->y4m.fps_n;
-      input->framerate.denominator = input->y4m.fps_d;
-      input->fmt = input->y4m.vpx_fmt;
-      input->bit_depth = input->y4m.bit_depth;
-    } else
-      fatal("Unsupported Y4M stream.");
-  } else if (input->detect.buf_read == 4 && fourcc_is_ivf(input->detect.buf)) {
-    fatal("IVF is not supported as input.");
-  } else {
-    input->file_type = FILE_TYPE_RAW;
-  }
-}
-
-static void close_input_file(struct VpxInputContext *input) {
-  fclose(input->file);
-  if (input->file_type == FILE_TYPE_Y4M) y4m_input_close(&input->y4m);
 }
 
 static struct stream_state *new_stream(struct VpxEncoderConfig *global,
@@ -1223,6 +955,11 @@ static int parse_stream_params(struct VpxEncoderConfig *global,
 
       if (global->passes < 2)
         warn("option %s ignored in one-pass mode.\n", arg.name);
+    } else if (arg_match(&arg, &corpus_complexity, argi)) {
+      config->cfg.rc_2pass_vbr_corpus_complexity = arg_parse_uint(&arg);
+
+      if (global->passes < 2)
+        warn("option %s ignored in one-pass mode.\n", arg.name);
     } else if (arg_match(&arg, &kf_min_dist, argi)) {
       config->cfg.kf_min_dist = arg_parse_uint(&arg);
     } else if (arg_match(&arg, &kf_max_dist, argi)) {
@@ -1243,8 +980,8 @@ static int parse_stream_params(struct VpxEncoderConfig *global,
           match = 1;
 
           /* Point either to the next free element or the first
-          * instance of this control.
-          */
+           * instance of this control.
+           */
           for (j = 0; j < config->arg_ctrl_cnt; j++)
             if (ctrl_args_map != NULL &&
                 config->arg_ctrls[j][0] == ctrl_args_map[i])
@@ -1419,6 +1156,7 @@ static void show_stream_config(struct stream_state *stream,
   SHOW(rc_2pass_vbr_bias_pct);
   SHOW(rc_2pass_vbr_minsection_pct);
   SHOW(rc_2pass_vbr_maxsection_pct);
+  SHOW(rc_2pass_vbr_corpus_complexity);
   SHOW(kf_mode);
   SHOW(kf_min_dist);
   SHOW(kf_max_dist);
@@ -1578,14 +1316,14 @@ static void encode_frame(struct stream_state *stream,
             vpx_img_alloc(NULL, VPX_IMG_FMT_I42016, cfg->g_w, cfg->g_h, 16);
       }
       I420Scale_16(
-          (uint16 *)img->planes[VPX_PLANE_Y], img->stride[VPX_PLANE_Y] / 2,
-          (uint16 *)img->planes[VPX_PLANE_U], img->stride[VPX_PLANE_U] / 2,
-          (uint16 *)img->planes[VPX_PLANE_V], img->stride[VPX_PLANE_V] / 2,
-          img->d_w, img->d_h, (uint16 *)stream->img->planes[VPX_PLANE_Y],
+          (uint16_t *)img->planes[VPX_PLANE_Y], img->stride[VPX_PLANE_Y] / 2,
+          (uint16_t *)img->planes[VPX_PLANE_U], img->stride[VPX_PLANE_U] / 2,
+          (uint16_t *)img->planes[VPX_PLANE_V], img->stride[VPX_PLANE_V] / 2,
+          img->d_w, img->d_h, (uint16_t *)stream->img->planes[VPX_PLANE_Y],
           stream->img->stride[VPX_PLANE_Y] / 2,
-          (uint16 *)stream->img->planes[VPX_PLANE_U],
+          (uint16_t *)stream->img->planes[VPX_PLANE_U],
           stream->img->stride[VPX_PLANE_U] / 2,
-          (uint16 *)stream->img->planes[VPX_PLANE_V],
+          (uint16_t *)stream->img->planes[VPX_PLANE_V],
           stream->img->stride[VPX_PLANE_V] / 2, stream->img->d_w,
           stream->img->d_h, kFilterBox);
       img = stream->img;
@@ -1657,7 +1395,7 @@ static void get_cx_data(struct stream_state *stream,
   *got_data = 0;
   while ((pkt = vpx_codec_get_cx_data(&stream->encoder, &iter))) {
     static size_t fsize = 0;
-    static int64_t ivf_header_pos = 0;
+    static FileOffset ivf_header_pos = 0;
 
     switch (pkt->kind) {
       case VPX_CODEC_CX_FRAME_PKT:
@@ -1683,7 +1421,7 @@ static void get_cx_data(struct stream_state *stream,
             fsize += pkt->data.frame.sz;
 
             if (!(pkt->data.frame.flags & VPX_FRAME_IS_FRAGMENT)) {
-              const int64_t currpos = ftello(stream->file);
+              const FileOffset currpos = ftello(stream->file);
               fseeko(stream->file, ivf_header_pos, SEEK_SET);
               ivf_write_frame_size(stream->file, fsize);
               fseeko(stream->file, currpos, SEEK_SET);
@@ -1883,8 +1621,6 @@ int main(int argc, const char **argv_) {
   memset(&input, 0, sizeof(input));
   exec_name = argv_[0];
 
-  if (argc < 3) usage_exit();
-
   /* Setup default input stream settings */
   input.framerate.numerator = 30;
   input.framerate.denominator = 1;
@@ -1897,6 +1633,8 @@ int main(int argc, const char **argv_) {
    */
   argv = argv_dup(argc - 1, argv_ + 1);
   parse_global_config(&global, argv);
+
+  if (argc < 3) usage_exit();
 
   switch (global.color_type) {
     case I420: input.fmt = VPX_IMG_FMT_I420; break;
@@ -1931,7 +1669,10 @@ int main(int argc, const char **argv_) {
   /* Handle non-option arguments */
   input.filename = argv[0];
 
-  if (!input.filename) usage_exit();
+  if (!input.filename) {
+    fprintf(stderr, "No input file specified!\n");
+    usage_exit();
+  }
 
   /* Decide if other chroma subsamplings than 4:2:0 are supported */
   if (global.codec->fourcc == VP9_FOURCC) input.only_i420 = 0;
@@ -2176,9 +1917,9 @@ int main(int argc, const char **argv_) {
 
     if (!global.quiet) {
       FOREACH_STREAM(fprintf(
-          stderr, "\rPass %d/%d frame %4d/%-4d %7" PRId64 "B %7" PRId64
-                  "b/f %7" PRId64 "b/s"
-                  " %7" PRId64 " %s (%.2f fps)\033[K\n",
+          stderr,
+          "\rPass %d/%d frame %4d/%-4d %7" PRId64 "B %7" PRId64 "b/f %7" PRId64
+          "b/s %7" PRId64 " %s (%.2f fps)\033[K\n",
           pass + 1, global.passes, frames_in, stream->frames_out,
           (int64_t)stream->nbytes,
           seen_frames ? (int64_t)(stream->nbytes * 8 / seen_frames) : 0,

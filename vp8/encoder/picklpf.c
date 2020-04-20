@@ -12,12 +12,13 @@
 #include "./vpx_scale_rtcd.h"
 #include "vp8/common/onyxc_int.h"
 #include "onyx_int.h"
+#include "vp8/encoder/picklpf.h"
 #include "vp8/encoder/quantize.h"
 #include "vpx_mem/vpx_mem.h"
 #include "vpx_scale/vpx_scale.h"
 #include "vp8/common/alloccommon.h"
 #include "vp8/common/loopfilter.h"
-#if ARCH_ARM
+#if VPX_ARCH_ARM
 #include "vpx_ports/arm.h"
 #endif
 

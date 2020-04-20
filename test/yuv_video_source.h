@@ -7,8 +7,8 @@
  *  in the file PATENTS.  All contributing project authors may
  *  be found in the AUTHORS file in the root of the source tree.
  */
-#ifndef TEST_YUV_VIDEO_SOURCE_H_
-#define TEST_YUV_VIDEO_SOURCE_H_
+#ifndef VPX_TEST_YUV_VIDEO_SOURCE_H_
+#define VPX_TEST_YUV_VIDEO_SOURCE_H_
 
 #include <cstdio>
 #include <cstdlib>
@@ -43,8 +43,8 @@ class YUVVideoSource : public VideoSource {
   virtual void Begin() {
     if (input_file_) fclose(input_file_);
     input_file_ = OpenTestDataFile(file_name_);
-    ASSERT_TRUE(input_file_ != NULL) << "Input file open failed. Filename: "
-                                     << file_name_;
+    ASSERT_TRUE(input_file_ != NULL)
+        << "Input file open failed. Filename: " << file_name_;
     if (start_) {
       fseek(input_file_, static_cast<unsigned>(raw_size_) * start_, SEEK_SET);
     }
@@ -122,4 +122,4 @@ class YUVVideoSource : public VideoSource {
 
 }  // namespace libvpx_test
 
-#endif  // TEST_YUV_VIDEO_SOURCE_H_
+#endif  // VPX_TEST_YUV_VIDEO_SOURCE_H_

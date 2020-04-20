@@ -99,6 +99,7 @@ distclean: clean
       rm -f Makefile; \
       rm -f config.log config.mk; \
       rm -f vpx_config.[hc] vpx_config.asm; \
+      rm -f arm_neon.h; \
     else \
       rm -f $(target)-$(TOOLCHAIN).mk; \
     fi
@@ -124,6 +125,7 @@ ifeq ($(TOOLCHAIN), x86-os2-gcc)
 CFLAGS += -mstackrealign
 endif
 
+# x86[_64]
 $(BUILD_PFX)%_mmx.c.d: CFLAGS += -mmmx
 $(BUILD_PFX)%_mmx.c.o: CFLAGS += -mmmx
 $(BUILD_PFX)%_sse2.c.d: CFLAGS += -msse2
@@ -138,6 +140,12 @@ $(BUILD_PFX)%_avx.c.d: CFLAGS += -mavx
 $(BUILD_PFX)%_avx.c.o: CFLAGS += -mavx
 $(BUILD_PFX)%_avx2.c.d: CFLAGS += -mavx2
 $(BUILD_PFX)%_avx2.c.o: CFLAGS += -mavx2
+$(BUILD_PFX)%_avx512.c.d: CFLAGS += -mavx512f -mavx512cd -mavx512bw -mavx512dq -mavx512vl
+$(BUILD_PFX)%_avx512.c.o: CFLAGS += -mavx512f -mavx512cd -mavx512bw -mavx512dq -mavx512vl
+
+# POWER
+$(BUILD_PFX)%_vsx.c.d: CFLAGS += -maltivec -mvsx
+$(BUILD_PFX)%_vsx.c.o: CFLAGS += -maltivec -mvsx
 
 $(BUILD_PFX)%.c.d: %.c
 	$(if $(quiet),@echo "    [DEP] $@")
@@ -422,10 +430,10 @@ ifneq ($(call enabled,DIST-SRCS),)
     DIST-SRCS-$(CONFIG_MSVS)  += build/make/gen_msvs_vcxproj.sh
     DIST-SRCS-$(CONFIG_MSVS)  += build/make/msvs_common.sh
     DIST-SRCS-$(CONFIG_RVCT) += build/make/armlink_adapter.sh
-    DIST-SRCS-$(ARCH_ARM)    += build/make/ads2gas.pl
-    DIST-SRCS-$(ARCH_ARM)    += build/make/ads2gas_apple.pl
-    DIST-SRCS-$(ARCH_ARM)    += build/make/ads2armasm_ms.pl
-    DIST-SRCS-$(ARCH_ARM)    += build/make/thumb.pm
+    DIST-SRCS-$(VPX_ARCH_ARM) += build/make/ads2gas.pl
+    DIST-SRCS-$(VPX_ARCH_ARM) += build/make/ads2gas_apple.pl
+    DIST-SRCS-$(VPX_ARCH_ARM) += build/make/ads2armasm_ms.pl
+    DIST-SRCS-$(VPX_ARCH_ARM) += build/make/thumb.pm
     DIST-SRCS-yes            += $(target:-$(TOOLCHAIN)=).mk
 endif
 INSTALL-SRCS := $(call cond_enabled,CONFIG_INSTALL_SRCS,INSTALL-SRCS)

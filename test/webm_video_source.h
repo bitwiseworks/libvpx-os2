@@ -7,8 +7,8 @@
  *  in the file PATENTS.  All contributing project authors may
  *  be found in the AUTHORS file in the root of the source tree.
  */
-#ifndef TEST_WEBM_VIDEO_SOURCE_H_
-#define TEST_WEBM_VIDEO_SOURCE_H_
+#ifndef VPX_TEST_WEBM_VIDEO_SOURCE_H_
+#define VPX_TEST_WEBM_VIDEO_SOURCE_H_
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
@@ -40,8 +40,8 @@ class WebMVideoSource : public CompressedVideoSource {
 
   virtual void Begin() {
     vpx_ctx_->file = OpenTestDataFile(file_name_);
-    ASSERT_TRUE(vpx_ctx_->file != NULL) << "Input file open failed. Filename: "
-                                        << file_name_;
+    ASSERT_TRUE(vpx_ctx_->file != NULL)
+        << "Input file open failed. Filename: " << file_name_;
 
     ASSERT_EQ(file_is_webm(webm_ctx_, vpx_ctx_), 1) << "file is not WebM";
 
@@ -90,4 +90,4 @@ class WebMVideoSource : public CompressedVideoSource {
 
 }  // namespace libvpx_test
 
-#endif  // TEST_WEBM_VIDEO_SOURCE_H_
+#endif  // VPX_TEST_WEBM_VIDEO_SOURCE_H_
