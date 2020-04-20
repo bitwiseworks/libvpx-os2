@@ -8,6 +8,8 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
+#include <memory>
+
 #include "third_party/googletest/src/include/gtest/gtest.h"
 
 #include "test/codec_factory.h"
@@ -74,7 +76,7 @@ class VpxEncoderParmsGetToDecoder
 
   virtual void PreEncodeFrameHook(::libvpx_test::VideoSource *video,
                                   ::libvpx_test::Encoder *encoder) {
-    if (video->frame() == 1) {
+    if (video->frame() == 0) {
       encoder->Control(VP9E_SET_COLOR_SPACE, encode_parms.cs);
       encoder->Control(VP9E_SET_COLOR_RANGE, encode_parms.color_range);
       encoder->Control(VP9E_SET_LOSSLESS, encode_parms.lossless);
@@ -99,9 +101,7 @@ class VpxEncoderParmsGetToDecoder
     vpx_codec_ctx_t *const vp9_decoder = decoder->GetDecoder();
     vpx_codec_alg_priv_t *const priv =
         reinterpret_cast<vpx_codec_alg_priv_t *>(vp9_decoder->priv);
-    FrameWorkerData *const worker_data =
-        reinterpret_cast<FrameWorkerData *>(priv->frame_workers[0].data1);
-    VP9_COMMON *const common = &worker_data->pbi->common;
+    VP9_COMMON *const common = &priv->pbi->common;
 
     if (encode_parms.lossless) {
       EXPECT_EQ(0, common->base_qindex);
@@ -140,7 +140,7 @@ class VpxEncoderParmsGetToDecoder
 TEST_P(VpxEncoderParmsGetToDecoder, BitstreamParms) {
   init_flags_ = VPX_CODEC_USE_PSNR;
 
-  testing::internal::scoped_ptr<libvpx_test::VideoSource> video(
+  std::unique_ptr<libvpx_test::VideoSource> video(
       new libvpx_test::Y4mVideoSource(test_video_.name, 0, test_video_.frames));
   ASSERT_TRUE(video.get() != NULL);
 

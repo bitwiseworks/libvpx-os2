@@ -10,6 +10,7 @@
 
 #ifdef __ANDROID__
 #include <fcntl.h>
+#include <unistd.h>
 #endif
 
 #include <cassert>
@@ -135,9 +136,8 @@ uint64 WriteBlock(IMkvWriter* writer, const Frame* const frame, int64 timecode,
     return false;
   }
 
-  if (!frame->is_key() &&
-      !WriteEbmlElement(writer, libwebm::kMkvReferenceBlock,
-                        reference_block_timestamp)) {
+  if (!frame->is_key() && !WriteEbmlElement(writer, libwebm::kMkvReferenceBlock,
+                                            reference_block_timestamp)) {
     return false;
   }
 
@@ -288,7 +288,7 @@ uint64 EbmlElementSize(uint64 type, const char* value) {
   ebml_size += strlen(value);
 
   // Size of Datasize
-  ebml_size++;
+  ebml_size += GetCodedUIntSize(strlen(value));
 
   return ebml_size;
 }
@@ -508,7 +508,7 @@ bool WriteEbmlElement(IMkvWriter* writer, uint64 type, const char* value) {
   if (WriteUInt(writer, length))
     return false;
 
-  if (writer->Write(value, static_cast<const uint32>(length)))
+  if (writer->Write(value, static_cast<uint32>(length)))
     return false;
 
   return true;
@@ -562,10 +562,10 @@ uint64 WriteFrame(IMkvWriter* writer, const Frame* const frame,
   if (relative_timecode < 0 || relative_timecode > kMaxBlockTimecode)
     return 0;
 
-  return frame->CanBeSimpleBlock() ?
-             WriteSimpleBlock(writer, frame, relative_timecode) :
-             WriteBlock(writer, frame, relative_timecode,
-                        cluster->timecode_scale());
+  return frame->CanBeSimpleBlock()
+             ? WriteSimpleBlock(writer, frame, relative_timecode)
+             : WriteBlock(writer, frame, relative_timecode,
+                          cluster->timecode_scale());
 }
 
 uint64 WriteVoidElement(IMkvWriter* writer, uint64 size) {
